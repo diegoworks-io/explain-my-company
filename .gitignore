@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Node (later for Next.js)
+node_modules/
+
+# Local configs & secrets
+.env
+.env.*
+*.env
+*.key
+*.pem
+
+# Outputs & large artifacts
+outputs/
+*.mp4
+*.pdf
+*.png
+*.csv
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
