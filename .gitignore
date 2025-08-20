@@ -17,6 +17,10 @@ node_modules/
 outputs/
 *.mp4
 *.pdf
+# allow demo PDFs in docs
+!docs/*.pdf
+!docs/**/*.pdf
+
 *.png
 *.csv
 
