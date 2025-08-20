@@ -1,4 +1,4 @@
-import io
+import io, re
 from pathlib import Path
 import fitz  # PyMuPDF
 from PIL import Image
@@ -8,8 +8,11 @@ INPUT = Path("datasets/sample")
 OUTPUT = Path("outputs")
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
+# Simple patterns for amounts and percents
+CURRENCY = r"(?:\\b(?:USD|US\\$|\\$)\\s*)?([\\d,]+(?:\\.\\d+)?)\\s*(million|billion|thousand|bn|m|k)?"
+PERCENT  = r"([0-9]{1,3}(?:\\.[0-9]+)?)\\s*%"
+
 def page_text_or_ocr(doc, page_index, dpi=300):
-    """Try native text; if empty, render page and OCR."""
     page = doc[page_index]
     txt = page.get_text("text").strip()
     if txt:
@@ -32,19 +35,55 @@ def extract_pages_to_txt(pdf_path: Path):
         print(f"Saved {out_file} ({mode})")
     return out_files, modes
 
+def _first_match(patterns, text, flags=re.I):
+    for pat in patterns:
+        m = re.search(pat, text, flags)
+        if m:
+            return m
+    return None
+
+def _fmt_amount(m):
+    if not m:
+        return "N/A"
+    amount = m.group(1)
+    unit = (m.group(2) or "").lower()
+    unit_map = {"million":"M","m":"M","billion":"B","bn":"B","thousand":"K","k":"K"}
+    return f"${amount}{unit_map.get(unit, '')}"
+
+def _fmt_percent(m):
+    if not m:
+        return "N/A"
+    return f"{m.group(1)}%"
+
+def extract_kpis(all_text):
+    t = all_text.replace("\u00a0"," ")
+
+    rev_ctx = r"(?:total\\s+revenue|revenue|net\\s+sales)[^\\n\\r]{0,80}" + CURRENCY
+    gm_ctx  = r"(?:gross\\s+margin|gross\\s+profit\\s+margin)[^\\n\\r]{0,40}" + PERCENT
+    op_ctx  = r"(?:operating\\s+income|income\\s+from\\s+operations|operating\\s+loss)[^\\n\\r]{0,80}" + CURRENCY
+
+    rev = _first_match([rev_ctx], t)
+    gm  = _first_match([gm_ctx], t)
+    op  = _first_match([op_ctx], t)
+
+    return {
+        "revenue": _fmt_amount(rev),
+        "gross_margin": _fmt_percent(gm),
+        "operating_income": _fmt_amount(op),
+    }
+
 def make_brief_md(pdf_name: str, page_files, modes):
     pages = [Path(p).read_text(encoding="utf-8") for p in page_files]
-    kpis = [
-        {"metric": "revenue", "value": "TBD", "unit": "USD"},
-        {"metric": "gross_margin", "value": "TBD", "unit": "%"},
-        {"metric": "operating_income", "value": "TBD", "unit": "USD"},
-    ]
+    all_text = "\n\n".join(pages)
+    kpis = extract_kpis(all_text)
+
     lines = []
     lines.append(f"# Executive Brief: {pdf_name}\n")
-    lines.append("Auto-generated draft from the local pipeline. KPIs are placeholders.\n")
+    lines.append("Auto-generated draft from the local pipeline.\n")
     lines.append("## KPIs")
-    for k in kpis:
-        lines.append(f"- {k['metric']}: {k['value']} {k['unit']}")
+    lines.append(f"- revenue: {kpis['revenue']}")
+    lines.append(f"- gross_margin: {kpis['gross_margin']}")
+    lines.append(f"- operating_income: {kpis['operating_income']}")
     lines.append("\n## Notable snippets")
     snippets = []
     for idx, p in enumerate(pages, start=1):
